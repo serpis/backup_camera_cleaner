@@ -1,0 +1,471 @@
+<!--
+This project uses an AI model to clean images from a dirty backup camera.
+
+The prompt used to instruct the model is as follows:
+
+You are an AI image processing expert integrated into a car's computer system. Your task is to clean up the image displayed on the infotainment screen.
+
+**CONTEXT:**
+The input image is a photograph of a car's interior, showing an infotainment screen. This screen displays a live feed from a dirty rear-view camera. Importantly, the camera view includes a graphical overlay on the left side which displays data from the car's parking sensors. These indicators light up to show when objects are close to the car.
+
+**PRIMARY TASK: CLEAN THE CAMERA VIEW**
+1.  Identify the area of the photograph that represents the camera view on the screen.
+2.  Within that area, identify smudges, dirt, and water spots that are on the camera lens.
+3.  Aggressively remove these lens artifacts.
+4.  As you clean, you must perfectly preserve and maintain the realism of all underlying details in the outdoor scene, especially people, animals, buildings, and ground textures.
+
+**CRITICAL CONSTRAINT: IGNORE THE CAR INTERIOR**
+- You MUST NOT make any changes to the parts of the image showing the car's interior. The dashboard, screen bezel, air vents, etc., must be left completely untouched.
+
+**CONDITIONAL LOGIC FOR SAFETY:**
+- First, check the status of the visual parking sensor overlay on the left of the camera view.
+- **IF** the sensor overlay is lit up (e.g., shows red or yellow bars), it signifies a nearby object. In this case, you must be extremely cautious. The preservation of any figures (especially people) or objects in the scene takes absolute priority over cleaning.
+- **IF** the sensor overlay is NOT lit up, you can proceed with a more confident cleaning of the entire camera view, while still adhering to all preservation rules.
+- In all cases, preserving human figures is the most important objective.
+
+Return ONLY the processed image.
+-->
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Cleanup - Before / After</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=JetBrains+Mono:wght@200..800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-1: #f7f6f1;
+      --bg-2: #eef2f8;
+      --bg-3: #f7f0e8;
+      --ink: #0b0f1a;
+      --muted: #5b6473;
+      --accent: #00b89c;
+      --accent-2: #ff6b35;
+      --card: rgba(255, 255, 255, 0.72);
+      --stroke: rgba(8, 15, 32, 0.12);
+      --shadow: 0 24px 60px rgba(15, 20, 35, 0.12), 0 6px 20px rgba(15, 20, 35, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg-1);
+    }
+
+    body {
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20vmax;
+      background:
+        radial-gradient(60vmax 60vmax at 8% 12%, rgba(0, 184, 156, 0.2), transparent 60%),
+        radial-gradient(40vmax 40vmax at 90% 10%, rgba(255, 107, 53, 0.2), transparent 60%),
+        radial-gradient(60vmax 50vmax at 50% 90%, rgba(0, 140, 255, 0.14), transparent 60%),
+        linear-gradient(120deg, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+      filter: saturate(120%);
+      z-index: -2;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          120deg,
+          rgba(7, 12, 24, 0.04) 0px,
+          rgba(7, 12, 24, 0.04) 1px,
+          transparent 1px,
+          transparent 7px
+        );
+      opacity: 0.4;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: clamp(24px, 4vw, 56px);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: clamp(12px, 2.4vw, 24px);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(8, 15, 32, 0.08);
+      border: 1px solid rgba(8, 15, 32, 0.14);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(32px, 4.6vw, 56px);
+      line-height: 1.05;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.6vw, 18px);
+    }
+
+    .meta {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 20px 0 28px;
+    }
+
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .gallery {
+      display: grid;
+      gap: clamp(18px, 2.2vw, 26px);
+    }
+
+    .pair {
+      position: relative;
+      padding: 12px;
+      border-radius: 22px;
+      border: 1px solid var(--stroke);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 300ms ease, transform 300ms ease;
+    }
+
+    .pair.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .pair::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(130deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
+      opacity: 0;
+      transition: opacity 180ms ease;
+      pointer-events: none;
+    }
+
+    .pair:hover::before {
+      opacity: 0.45;
+    }
+
+    .pair-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 4px 6px 14px;
+    }
+
+    .pair-head .name {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .pair-head .meta-text {
+      font-family: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .pair-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .media {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(8, 15, 32, 0.16);
+      background: white;
+    }
+
+    .media img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      aspect-ratio: 4 / 3;
+    }
+
+    .media::after {
+      content: attr(data-label);
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.85);
+      border: 1px solid rgba(8, 15, 32, 0.18);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .prompt-container {
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      padding: 12px 20px;
+      margin: 28px 0;
+      backdrop-filter: blur(12px);
+    }
+    .prompt-container summary {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 8px 0;
+      outline: none;
+    }
+    .prompt-container summary:hover {
+      color: var(--accent-2);
+    }
+    .prompt-container pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(8, 15, 32, 0.04);
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    .featured {
+      text-align: center;
+      margin: 28px 0 42px;
+    }
+    .featured h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 20px;
+      letter-spacing: 0.02em;
+    }
+    .featured-image img {
+      transform: scaleX(-1); /* Mirror the image */
+      border-radius: 16px;
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      max-width: 500px;
+      width: 100%;
+      margin: 0 auto;
+      display: block;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .pair-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pair {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div>
+        <span class="pill">camera cleanup / 2026</span>
+        <h1>Kamerarengöring</h1>
+        <p>Oprocessad bild till vänster, bearbetad till höger.</p>
+      </div>
+    </header>
+
+    <section class="featured">
+      <h2>Bild tagen bakåt för referens</h2>
+      <div class="media featured-image">
+        <img src="PXL_20251231_112118154.MP.jpg" alt="Bild tagen bakåt för referens">
+      </div>
+    </section>
+
+    <details class="prompt-container">
+      <summary>Visa använd prompt</summary>
+      <pre><code>You are an AI image processing expert integrated into a car's computer system. Your task is to clean up the image displayed on the infotainment screen.
+
+**CONTEXT:**
+The input image is a photograph of a car's interior, showing an infotainment screen. This screen displays a live feed from a dirty rear-view camera. Importantly, the camera view includes a graphical overlay on the left side which displays data from the car's parking sensors. These indicators light up to show when objects are close to the car.
+
+**PRIMARY TASK: CLEAN THE CAMERA VIEW**
+1.  Identify the area of the photograph that represents the camera view on the screen.
+2.  Within that area, identify smudges, dirt, and water spots that are on the camera lens.
+3.  Aggressively remove these lens artifacts.
+4.  As you clean, you must perfectly preserve and maintain the realism of all underlying details in the outdoor scene, especially people, animals, buildings, and ground textures.
+
+**CRITICAL CONSTRAINT: IGNORE THE CAR INTERIOR**
+- You MUST NOT make any changes to the parts of the image showing the car's interior. The dashboard, screen bezel, air vents, etc., must be left completely untouched.
+
+**CONDITIONAL LOGIC FOR SAFETY:**
+- First, check the status of the visual parking sensor overlay on the left of the camera view.
+- **IF** the sensor overlay is lit up (e.g., shows red or yellow bars), it signifies a nearby object. In this case, you must be extremely cautious. The preservation of any figures (especially people) or objects in the scene takes absolute priority over cleaning.
+- **IF** the sensor overlay is NOT lit up, you can proceed with a more confident cleaning of the entire camera view, while still adhering to all preservation rules.
+- In all cases, preserving human figures is the most important objective.
+
+Return ONLY the processed image.</code></pre>
+    </details>
+
+
+
+    <section id="gallery" class="gallery"></section>
+  </main>
+
+  <script>
+    const inputFiles = [
+      "PXL_20251231_111946661.jpg",
+      "PXL_20251231_112003478.jpg",
+      "PXL_20251231_112004289.jpg",
+      "PXL_20251231_112006295.jpg",
+      "PXL_20251231_112008149.jpg",
+      "PXL_20251231_112009056.jpg",
+      "PXL_20251231_112010725.jpg",
+      "PXL_20251231_112013295.jpg",
+      "PXL_20251231_112014411.jpg",
+      "PXL_20251231_112016348.jpg",
+      "PXL_20251231_112017330.jpg",
+      "PXL_20251231_112018929.jpg",
+      "PXL_20251231_112023868.jpg",
+      "PXL_20251231_112031654.jpg",
+      "PXL_20251231_112038072.jpg",
+      "PXL_20251231_112039871.jpg",
+      "PXL_20251231_112042158.jpg",
+      "PXL_20251231_112045078.jpg",
+      "PXL_20251231_112046625.jpg",
+      "PXL_20251231_112049361.jpg",
+      "PXL_20251231_112050828.jpg",
+      "PXL_20251231_112056329.jpg"
+    ];
+
+    const gallery = document.getElementById("gallery");
+    const countEl = document.getElementById("count");
+    const imageFiles = inputFiles
+      .filter((name) => /\.(jpe?g|png|webp|avif|gif)$/i.test(name))
+      .sort((a, b) => a.localeCompare(b, "en"));
+
+    const processedName = (name) => {
+      const dot = name.lastIndexOf(".");
+      if (dot === -1) return name + "-processed";
+      return name.slice(0, dot) + "-processed" + name.slice(dot);
+    };
+
+    const cards = [];
+
+    imageFiles.forEach((name, index) => {
+      const card = document.createElement("article");
+      card.className = "pair";
+      const head = document.createElement("div");
+      head.className = "pair-head";
+
+      const title = document.createElement("div");
+      title.className = "name";
+      title.textContent = name;
+
+      const meta = document.createElement("div");
+      meta.className = "meta-text";
+      meta.textContent = "input | output";
+
+      head.append(title, meta);
+
+      const grid = document.createElement("div");
+      grid.className = "pair-grid";
+
+      const left = document.createElement("div");
+      left.className = "media";
+      left.dataset.label = "Original";
+
+      const leftImg = document.createElement("img");
+      leftImg.src = `input/${name}`;
+      leftImg.alt = `Original ${name}`;
+      leftImg.loading = "lazy";
+      leftImg.decoding = "async";
+
+      left.append(leftImg);
+
+      const right = document.createElement("div");
+      right.className = "media";
+      right.dataset.label = "Processed";
+
+      const rightImg = document.createElement("img");
+      rightImg.src = `output/${processedName(name)}`;
+      rightImg.alt = `Processed ${name}`;
+      rightImg.loading = "lazy";
+      rightImg.decoding = "async";
+
+      right.append(rightImg);
+
+      grid.append(left, right);
+      card.append(head, grid);
+      gallery.append(card);
+      cards.push(card);
+
+      card.style.transitionDelay = `${Math.min(index * 25, 300)}ms`;
+    });
+
+    const observer = new IntersectionObserver(
+      (entries, obs) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    cards.forEach((card) => observer.observe(card));
+
+    countEl.textContent = `${cards.length}`;
+  </script>
+</body>
+</html>

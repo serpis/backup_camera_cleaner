@@ -1,0 +1,22 @@
+# System files
+.DS_Store
+
+# Python virtual environment
+.venv/
+__pycache__/
+
+# Archives
+*.zip
+
+# Environment variables
+.env
+
+# Media folders - ignore all but allow specific extensions
+input/*
+!input/*.jpg
+!input/*.jpeg
+!input/*.png
+output/*
+!output/*.jpg
+!output/*.jpeg
+!output/*.png
